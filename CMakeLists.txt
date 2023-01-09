@@ -10,6 +10,7 @@ find_package(VTK COMPONENTS
   IOLegacy
   IOImage
   IOXML
+  FiltersCore
   RenderingCore
   RenderingContextOpenGL2
   RenderingFreeType
