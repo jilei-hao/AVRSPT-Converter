@@ -7,6 +7,7 @@
 #include <vtkWindowedSincPolyDataFilter.h>
 #include <vtkTriangleFilter.h>
 #include <vtkSmoothPolyDataFilter.h>
+#include <vtkPolyDataWriter.h>
 
 
 #include <vtkPolyDataMapper.h>
@@ -25,17 +26,24 @@ int main (int argc, char *argv[])
   std::cout << "-- AVRSPT Model Processor\n";
   std::cout << "======================================\n";
 
-  if (argc < 3)
+  if (argc < 5)
   {
-    std::cout << "usage: ModelProcessor input.nii.vtk output vtk" << std::endl;
+    std::cout << "usage: ModelProcessor input.nii.vtk output vtk dc_factor flag_render\n";
+    std::cout << "dc_factor [0-100] represents target reduction rate of the decimation algorithm\n";
+    std::cout << "flag_render {r, nr} r = render, nr = not render\n";
     return EXIT_FAILURE;
   }
 
   std::string fnIn = argv[1];
   std::string fnOut = argv[2];
-
+  double dc_factor = std::stod(argv[3]);
+  std::string flag_render = argv[4];
+  
   std::cout << "-- Input File Name: " << fnIn << std::endl;
   std::cout << "-- Output File Name: " << fnOut << std::endl;
+  std::cout << "-- dc_factor: " << dc_factor << std::endl;
+
+  dc_factor /= 100.0;
 
   vtkNew<vtkPolyDataReader> reader;
   reader->SetFileName(fnIn.c_str());
@@ -52,47 +60,29 @@ int main (int argc, char *argv[])
   flt_taubin->SetInputData(poly_tail);
   flt_taubin->SetNumberOfIterations(50);
   flt_taubin->SetPassBand(0.01);
-  flt_taubin->SetFeatureAngle(30);
-  flt_taubin->BoundarySmoothingOn();
-  flt_taubin->FeatureEdgeSmoothingOn();
-  flt_taubin->NonManifoldSmoothingOn();
-  flt_taubin->NormalizeCoordinatesOn();
   flt_taubin->Update();
   poly_tail = flt_taubin->GetOutput();
 
   vtkNew<vtkDecimatePro> flt_decimate;
   flt_decimate->SetInputData(poly_tail);
-  flt_decimate->SetTargetReduction(0.8);
+  flt_decimate->SetTargetReduction(dc_factor);
   //flt_decimate->PreserveTopologyOff();
   flt_decimate->Update();
   poly_tail = flt_decimate->GetOutput();
-
-  // vtkNew<vtkSmoothPolyDataFilter> flt_smooth;
-  // flt_smooth->SetInputData(poly_tail);
-  // flt_smooth->SetNumberOfIterations(100);
-  // flt_smooth->SetRelaxationFactor(0.1);
-  // flt_smooth->FeatureEdgeSmoothingOff();
-  // flt_smooth->BoundarySmoothingOn();
-  // flt_smooth->Update();
-  // poly_tail = flt_smooth->GetOutput();
-
-  // vtkNew<vtkWindowedSincPolyDataFilter> flt_taubin_post;
-  // flt_taubin_post->SetInputData(poly_tail);
-  // flt_taubin_post->SetNumberOfIterations(50);
-  // flt_taubin_post->SetPassBand(0.01);
-  // flt_taubin_post->SetFeatureAngle(120);
-  // flt_taubin_post->BoundarySmoothingOff();
-  // flt_taubin_post->FeatureEdgeSmoothingOff();
-  // flt_taubin_post->NonManifoldSmoothingOn();
-  // flt_taubin_post->NormalizeCoordinatesOn();
-  // flt_taubin_post->Update();
-  // poly_tail = flt_taubin_post->GetOutput();
-  
 
   std::cout << "\n ========== After Processing =============\n";
   std::cout << "-- Number of Polygons: " << poly_tail->GetNumberOfPolys() << std::endl;
   std::cout << "-- Size: " << poly_tail->GetActualMemorySize() << std::endl;
 
+  vtkNew<vtkPolyDataWriter> writer;
+  writer->SetInputData(poly_tail);
+  writer->SetFileName(fnOut.c_str());
+  writer->Write();
+
+  if (flag_render == "nr") // skip the rendering
+    return EXIT_SUCCESS;
+
+  
   std::cout << "\n ========== Rendering Result ... =============\n ";
   vtkNew<vtkPolyDataMapper> pre_mapper;
   vtkNew<vtkPolyDataMapper> post_mapper;
@@ -118,22 +108,22 @@ int main (int argc, char *argv[])
   vtkNew<vtkLight> light_a_0;
   light_a_0->SetLightTypeToCameraLight();
   light_a_0->SetPosition(0, 1, 1);
-  light_a_0->SetIntensity(0.5);
+  light_a_0->SetIntensity(0.3);
 
   vtkNew<vtkLight> light_a_1;
   light_a_1->SetLightTypeToCameraLight();
   light_a_1->SetPosition(1, 0, 1);
-  light_a_1->SetIntensity(0.5);
+  light_a_1->SetIntensity(0.3);
 
   vtkNew<vtkLight> light_a_2;
   light_a_2->SetLightTypeToCameraLight();
   light_a_2->SetPosition(0, -1, 1);
-  light_a_2->SetIntensity(0.5);
+  light_a_2->SetIntensity(0.3);
 
   vtkNew<vtkLight> light_a_3;
   light_a_3->SetLightTypeToCameraLight();
   light_a_3->SetPosition(-1, 0, 1);
-  light_a_3->SetIntensity(0.5);
+  light_a_3->SetIntensity(0.3);
 
   pre_renderer->AddLight(light_a_0);
   pre_renderer->AddLight(light_a_1);
