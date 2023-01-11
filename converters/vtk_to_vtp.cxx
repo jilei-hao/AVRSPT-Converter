@@ -25,6 +25,11 @@ int main (int argc, char *argv[])
   std::string key = argv[3];
   double value = std::stod(argv[4]);
 
+  std::cout << "-- Input: " << fnIn << std::endl;
+  std::cout << "-- Output: " << fnOut << std::endl;
+  std::cout << "-- key: " << key << std::endl;
+  std::cout << "-- Value: " << value << std::endl;
+
   vtkNew<vtkPolyDataReader> reader;
   reader->SetFileName(fnIn.c_str());
   reader->Update();
@@ -40,6 +45,7 @@ int main (int argc, char *argv[])
   poly_tail->GetFieldData()->AddArray(arr);
 
   vtkNew<vtkXMLPolyDataWriter> writer;
+  writer->SetInputData(poly_tail);
   writer->SetFileName(fnOut.c_str());
   writer->Write();
 
