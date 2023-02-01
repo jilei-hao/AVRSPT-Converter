@@ -2,8 +2,15 @@
 #include <iostream>
 #include <itkImageFileReader.h>
 #include <itkLinearInterpolateImageFunction.h>
+#include <itkNearestNeighborInterpolateImageFunction.h>
 #include <itkExtractImageFilter.h>
 #include <itkImageFileWriter.h>
+#include <itkResampleImageFilter.h>
+#include <itkImageToVTKImageFilter.h> // require ITK's Module_ITKVtkGlue=ON
+
+#include <vtkImageData.h>
+#include <vtkSmartPointer.h>
+#include <vtkXMLImageDataWriter.h>
 
 char* getCmdOption(char ** begin, char ** end, const std::string & option)
 {
@@ -68,9 +75,12 @@ int main(int argc, char * argv[])
   if (cmdOptionExists(argBegin, argEnd, "-oo"))
   {
     fnOutputPtrn = getCmdOption(argBegin, argEnd, "-oo");
+
+    if (fnOutputPtrn)
+      std::cout << "-- Output Filename Pattern: " << fnOutputPtrn << std::endl;
   }
 
-
+  bool isSeg = cmdOptionExists(argBegin, argEnd, "-seg");
 
   // typedefs
   constexpr unsigned int dim = 4;
@@ -83,6 +93,7 @@ int main(int argc, char * argv[])
   Image4DType::Pointer inputImage;
   try
   {
+    std::cout << "-- Reading 4D Image..." << std::endl;
     inputImage = itk::ReadImage<Image4DType>(fnInput);
   }
   catch (const itk::ExceptionObject & err)
@@ -92,24 +103,32 @@ int main(int argc, char * argv[])
     return EXIT_FAILURE;
   }
 
+
   // extracting 3d slices
-  Image4DType::RegionType inputRegion = inputImage->GetBufferedRegion();
-  Image4DType::SizeType   size = inputRegion.GetSize();
-  unsigned int nT = inputRegion.GetSize()[dim - 1];
+  using LinearInterpolatorType = itk::LinearInterpolateImageFunction<Image3DType, double>;
+  using NNInterpolatorType = itk::NearestNeighborInterpolateImageFunction<Image3DType, double>;
+  using ResampleFilterType = itk::ResampleImageFilter<Image3DType, Image3DType>;
+  using ExtractFilterType = itk::ExtractImageFilter<Image4DType, Image3DType>;
+  using Writer3DType = itk::ImageFileWriter<Image3DType>;
+  using TransformType = itk::IdentityTransform<double, 3>;
+  
+  Image4DType::RegionType inputRegion = inputImage->GetLargestPossibleRegion();
+  Image4DType::SizeType inputSize = inputRegion.GetSize();
+  const unsigned int nT = inputSize[dim - 1];
+
+  std::cout << "-- Total Number of Time Points: " << nT << std::endl;
 
   for (unsigned int crnt_tp = 0; crnt_tp < nT; ++crnt_tp)
   {
     std::cout << "-- Processing tp: " << crnt_tp << std::endl;
-
-    using ExtractFilterType = itk::ExtractImageFilter<Image4DType, Image3DType>;
+    
     auto extractFilter = ExtractFilterType::New();
     extractFilter->SetDirectionCollapseToSubmatrix();
-
+    Image4DType::SizeType size = inputRegion.GetSize();
     size[dim - 1] = 0; // collapse the time dimension
     Image4DType::IndexType start = inputRegion.GetIndex();
+    start[dim - 1] = crnt_tp;
 
-    const unsigned int sliceNumber = crnt_tp;
-    start[dim - 1] = sliceNumber;
     Image4DType::RegionType desiredRegion;
     desiredRegion.SetSize(size);
     desiredRegion.SetIndex(start);
@@ -122,55 +141,52 @@ int main(int argc, char * argv[])
 
     // Resampling
     Image3DType::RegionType region = imageTail->GetLargestPossibleRegion();
-    Image3DType::SizeType rsSize = region.GetSize();
-    Image3DType::SpacingType rsSpacing = imageTail->GetSpacing();
-    Image3DType::PointType rsOrigin = imageTail->GetOrigin();
+    Image3DType::SizeType inputSize = region.GetSize();
+    Image3DType::SpacingType inputSpacing = imageTail->GetSpacing();
+    Image3DType::PointType inputOrigin = imageTail->GetOrigin();
 
+    Image3DType::SizeType rsSize = inputSize;    
+    Image3DType::SpacingType rsSpacing = inputSpacing;
+    Image3DType::PointType rsOrigin = inputOrigin;
 
-    // Write output image slice
-    using Writer3DType = itk::ImageFileWriter<Image3DType>;
-
-    if (fnOutputPtrn)
+    for (unsigned int d = 0; d < dim - 1; ++d)
     {
-      Writer3DType::Pointer writer = Writer3DType::New();
-      writer->SetInput(imageTail);
-      writer->SetFileName(ssprintf(fnOutputPtrn, crnt_tp));
-      writer->Write();
+      rsSize[d] = inputSize[d] * scale;
+      rsSpacing[d] = inputSpacing[d] / scale;
+      rsOrigin[d] = inputOrigin[d] + 0.5 * (rsSpacing[d] - inputSpacing[d]);
     }
+
+    itk::SmartPointer<itk::InterpolateImageFunction<Image3DType, double>> interpolator;
+    
+    if (isSeg)
+      interpolator = NNInterpolatorType::New();
+    else
+      interpolator = LinearInterpolatorType::New();
+
+    auto resampleFilter = ResampleFilterType::New();
+    resampleFilter->SetInput(imageTail);
+    resampleFilter->SetInterpolator(interpolator);
+    resampleFilter->SetSize(rsSize);
+    resampleFilter->SetOutputSpacing(rsSpacing);
+    resampleFilter->SetOutputOrigin(rsOrigin);
+    resampleFilter->SetOutputDirection(imageTail->GetDirection());
+    resampleFilter->SetDefaultPixelValue(0);
+    resampleFilter->UpdateLargestPossibleRegion();
+    imageTail = resampleFilter->GetOutput();
+
+    // Convert to VTI
+    using VTKFilterType = itk::ImageToVTKImageFilter<Image3DType>;
+    auto vtkFilter = VTKFilterType::New();
+    vtkFilter->SetInput(imageTail);
+    vtkFilter->Update();
+
+    vtkSmartPointer<vtkImageData> vtkTail = vtkFilter->GetOutput();
+
+    vtkNew<vtkXMLImageDataWriter> vtkWriter;
+    vtkWriter->SetInputData(vtkTail);
+    vtkWriter->SetFileName(ssprintf(fnOutputPtrn, crnt_tp).c_str());
+    vtkWriter->Write();
   }
-  // // resampling
-  // const typename Image3DType::PointType rsOrigin = imageTail->GetOrigin();
-  // typename Image3DType::SizeType rsSize = imageTail->GetSize();
-  // typename Image3DType::SpacingType rsSpacing = imageTail->GetSpacing();
-  // typename Image3DType::PointType  rsOrigin = imageTail->GetOrigin();
-
-  // for (unsigned int d = 0; d < dim; ++d)
-  // {
-  //   outputSize[d] = inputSize[d] * scale;
-  //   outputSpacing[d] = inputSpacing[d] / scale;
-  //   rsOrigin[d] = inputOrigin[d] + 0.5 * (outputSpacing[d] - inputSpacing[d]);
-  // }
-
-  
-
-  // using LinearInterpolatorType = itk::LinearInterpolateImageFunction<Image3DType, double>;
-  // auto interpolator = LinearInterpolatorType::New();
-
-  // using ResampleFilterType = itk::ResampleImageFilter<Image3DType, Image3DType>;
-
-  // ResampleFilterType::InterpolatorType *interpolator;
-
-  // auto resampleFilter = ResampleFilterType::New();
-
-  // resampleFilter->SetInput(inputImage);
-  // resampleFilter->SetInterpolator(interpolator);
-  // resampleFilter->SetSize(outputSize);
-  // resampleFilter->SetOutputSpacing(outputSpacing);
-  // resampleFilter->SetOutputOrigin(outputOrigin);
-
-  // auto imgRs = resampleFilter->GetOutput();
-
-
 
   return 0;
 }
