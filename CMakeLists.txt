@@ -30,14 +30,7 @@ if (NOT ITK_FOUND)
 endif()
 
 
-add_executable(${PROJECT_NAME} main.cxx)
-target_link_libraries(${PROJECT_NAME} PUBLIC ${VTK_LIBRARIES} ${ITK_LIBRARIES})
+add_subdirectory(greedy)
 
 add_subdirectory(converters)
-
-# vtk_module_autoinit is needed
-vtk_module_autoinit(
-  TARGETS ${PROJECT_NAME}
-  MODULES ${VTK_LIBRARIES}
-)
 
