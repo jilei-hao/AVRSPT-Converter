@@ -8,6 +8,7 @@
 #include <vtkTriangleFilter.h>
 #include <vtkSmoothPolyDataFilter.h>
 #include <vtkPolyDataWriter.h>
+#include <vtkPointData.h>
 
 
 #include <vtkPolyDataMapper.h>
@@ -28,7 +29,7 @@ int main (int argc, char *argv[])
 
   if (argc < 5)
   {
-    std::cout << "usage: ModelProcessor input.nii.vtk output vtk dc_factor flag_render\n";
+    std::cout << "usage: ModelProcessor input.vtk output.vtk dc_factor flag_render\n";
     std::cout << "dc_factor [0-100] represents target reduction rate of the decimation algorithm\n";
     std::cout << "flag_render {r, nr} r = render, nr = not render\n";
     return EXIT_FAILURE;
@@ -56,19 +57,42 @@ int main (int argc, char *argv[])
   std::cout << "-- Number of Polygons: " << poly_tail->GetNumberOfPolys() << std::endl;
   std::cout << "-- Size: " << poly_tail->GetActualMemorySize() << std::endl;
   
-  vtkNew<vtkWindowedSincPolyDataFilter> flt_taubin;
-  flt_taubin->SetInputData(poly_tail);
-  flt_taubin->SetNumberOfIterations(50);
-  flt_taubin->SetPassBand(0.01);
-  flt_taubin->Update();
-  poly_tail = flt_taubin->GetOutput();
+  // vtkNew<vtkWindowedSincPolyDataFilter> flt_taubin;
+  // flt_taubin->SetInputData(poly_tail);
+  // flt_taubin->SetNumberOfIterations(50);
+  // flt_taubin->SetPassBand(0.01);
+  // flt_taubin->Update();
+  // poly_tail = flt_taubin->GetOutput();
 
   vtkNew<vtkDecimatePro> flt_decimate;
   flt_decimate->SetInputData(poly_tail);
   flt_decimate->SetTargetReduction(dc_factor);
-  //flt_decimate->PreserveTopologyOff();
+  //flt_decimate->PreserveTopologyOn();
   flt_decimate->Update();
   poly_tail = flt_decimate->GetOutput();
+
+  // vtkNew<vtkTriangleFilter> flt_triangle;
+  // flt_triangle->SetInputData(poly_tail);
+  // flt_triangle->Update();
+  // poly_tail = flt_triangle->GetOutput();
+
+  // auto pd = poly_tail->GetPointData();
+  // auto nrm = pd->GetNormals();
+
+  // int total = 0, cnt = 0;
+  // for(size_t i = 0; i < (size_t)nrm->GetNumberOfTuples(); i++)
+  //   for(size_t j = 0; j < (size_t)nrm->GetNumberOfComponents(); j++)
+  //   {
+  //     ++total;
+  //     auto val = nrm->GetComponent(i,j);
+  //     if (val < 0)
+  //       nrm->SetComponent(i,j, -val);
+  //   }
+
+  // std::cout << "Total Normal Count: " << total << std::endl;
+  // std::cout << "Negative Normal Count: " << cnt << std::endl;
+        //nrm->SetComponent(i,j,-nrm->GetComponent(i,j));
+
 
   std::cout << "\n ========== After Processing =============\n";
   std::cout << "-- Number of Polygons: " << poly_tail->GetNumberOfPolys() << std::endl;
