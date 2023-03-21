@@ -10,5 +10,14 @@ target_link_libraries(ModelProcessor PUBLIC ${VTK_LIBRARIES})
 add_executable(VTKToVTP vtk_to_vtp.cxx)
 target_link_libraries(VTKToVTP PUBLIC ${VTK_LIBRARIES})
 
+set(GREEDY_INCLUDE_DIRS 
+  ${avrspt-converter_SOURCE_DIR}/greedy/src
+  ${avrspt-converter_SOURCE_DIR}/greedy/src/ITKFilters/include
+  ${avrspt-converter_SOURCE_DIR}/greedy/src/propagation
+)
+add_executable(CaseGen case_generator.cxx)
+target_link_libraries(CaseGen PUBLIC ${VTK_LIBRARIES} ${ITK_LIBRARIES} propagationapi greedyapi)
+target_include_directories(CaseGen PUBLIC ${GREEDY_INCLUDE_DIRS})
+
 add_executable(VolumeGenerator volume_generator.cxx)
 target_link_libraries(VolumeGenerator PUBLIC ${VTK_LIBRARIES} ${ITK_LIBRARIES})
