@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <map>
 
 #include <vtkNIFTIImageReader.h>
 #include <vtkNew.h>
@@ -11,6 +12,10 @@
 #include <PropagationAPI.h>
 #include <PropagationIO.h>
 #include <PropagationTools.h>
+#include <PropagationParameters.h>
+#include <GreedyParameters.h>
+
+using namespace propagation;
 
 char* getCmdOption(char ** begin, char ** end, const std::string & option)
 {
@@ -73,6 +78,29 @@ struct SegConfig
   std::vector<unsigned int> tpt; 
 };
 
+struct TPData
+{
+  typedef double TReal;
+  typedef PropagationAPI<TReal> PropagationAPIType;
+  typedef PropagationInput<TReal> PropagationInputType;
+  typedef std::shared_ptr<PropagationInputType> PropaInputPointer;
+  typedef PropagationOutput<TReal> PropagationOutputType;
+  typedef std::shared_ptr<PropagationOutputType> PropaOutputPointer;
+  typedef PropagationInputBuilder<TReal> PropaInputBuilderType;
+  typedef PropagationTools<TReal> PropaTools;
+  typedef typename PropagationAPIType::TImage4D TImage4D;
+  typedef typename PropagationAPIType::TImage3D TImage3D;
+  typedef typename PropagationAPIType::TLabelImage3D TLabelImage3D;
+  typedef typename PropagationAPIType::TLabelImage4D TLabelImage4D;
+  typedef typename PropagationAPIType::TPropagationMesh TPropaMesh;
+  typedef typename PropagationAPIType::TPropagationMeshPointer TPPropaMeshPointer;
+
+
+  TImage3D::Pointer img;
+  TLabelImage3D::Pointer seg;
+  TPPropaMeshPointer mesh;
+};
+
 int main (int argc, char *argv[])
 {
   std::cout << "======================================\n";
@@ -95,6 +123,7 @@ int main (int argc, char *argv[])
   std::string fnImage4D = "/Users/jileihao/data/avrspt/tav48/img4d_tav48_LAS.nii.gz";
   std::string dirOutput = "/Users/jileihao/data/avrspt/tav48/case_output";
   std::vector<SegConfig> segConfigs;
+  std::map<unsigned int, TPData> tpData;
 
   SegConfig scSys, scDias;
   
@@ -112,26 +141,78 @@ int main (int argc, char *argv[])
   unsigned int dc = 50, rs = 40;
 
   // Running propagation
-  using namespace propagation;
-  typedef float TReal;
+  typedef double TReal;
   typedef PropagationAPI<TReal> PropagationAPIType;
   typedef PropagationInput<TReal> PropagationInputType;
+  typedef std::shared_ptr<PropagationInputType> PropaInputPointer;
+  typedef PropagationOutput<TReal> PropagationOutputType;
+  typedef std::shared_ptr<PropagationOutputType> PropaOutputPointer;
   typedef PropagationInputBuilder<TReal> PropaInputBuilderType;
   typedef PropagationTools<TReal> PropaTools;
   typedef typename PropagationAPIType::TImage4D TImage4D;
   typedef typename PropagationAPIType::TImage3D TImage3D;
   typedef typename PropagationAPIType::TLabelImage3D TLabelImage3D;
+  typedef typename PropagationAPIType::TLabelImage4D TLabelImage4D;
 
+  for (auto sc : segConfigs)
+  {
+    std::cout << "[CaseGen] Running Propagation for config:" << std::endl;
+    std::cout << "-- fnSeg: " << sc.fnSeg << std::endl;
+    std::cout << "-- reference tp: " << sc.tpr << std::endl;
+    std::cout << "-- target tps";
+    for (auto tp : sc.tpt)
+      std::cout << " " << tp;
+    std::cout << std::endl;
 
-  // -- run propagation for each segmentation config in the list
+    // -- run propagation for each segmentation config in the list
 
-  std::shared_ptr<PropagationAPIType> propaAPI;
-  std::shared_ptr<PropaInputBuilderType> ibuilder = 
-    std::make_shared<PropaInputBuilderType>();
+    std::shared_ptr<PropagationAPIType> propaAPI;
+    std::shared_ptr<PropaInputBuilderType> ibuilder = 
+      std::make_shared<PropaInputBuilderType>();
 
-  TImage4D::Pointer img4d = PropaTools::ReadImage<TImage4D>(fnImage4D);
+    // -- read in 4d base image
+    TImage4D::Pointer img4d = PropaTools::ReadImage<TImage4D>(fnImage4D);
 
-  img4d->Print(std::cout);
+    // -- read in 3d reference segmentation
+    TLabelImage3D::Pointer seg3d = PropaTools::ReadImage<TLabelImage3D>(sc.fnSeg);
+
+    tpData[sc.tpr].seg = seg3d; // put reference segmentation in
+
+    ibuilder->SetImage4D(img4d);
+    ibuilder->SetReferenceSegmentationIn3D(seg3d);
+    ibuilder->SetReferenceTimePoint(sc.tpr);
+    ibuilder->SetTargetTimePoints(sc.tpt);
+    ibuilder->SetResliceMetricToLabel(0.2, false); // LABEL 0.2 vox
+    ibuilder->SetRegistrationMetric(GreedyParameters::SSD);
+    ibuilder->SetMultiResolutionSchedule(std::vector<int>{ 10, 10 }); // 100x100
+    ibuilder->SetAffineDOF(GreedyParameters::AffineDOF::DOF_RIGID);
+    ibuilder->SetPropagationVerbosity(PropagationParameters::Verbosity::VERB_VERBOSE);
+    PropaInputPointer propaInput = ibuilder->BuildPropagationInput();
+
+    propaAPI = std::make_shared<PropagationAPIType>(propaInput);
+    propaAPI->Run();
+
+    PropaOutputPointer propaOut = propaAPI->GetOutput();
+
+    for (auto tp : sc.tpt)
+    {
+      TLabelImage3D::Pointer outSeg3D = propaOut->GetSegmentation3D(tp);
+      TPData tpd;
+      tpd.seg = outSeg3D;
+      tpData[tp] = tpd;
+    }
+  }
+
+  std::cout << "[CaseGen] Final Result: " << std::endl;
+  for (auto kv : tpData)
+  {
+    std::cout << " -- key = " << kv.first << std::endl;
+  }
+  
+
+  // const std::string fnSegOut4D = "/Users/jileihao/data/avrspt/tav48/case_output/seg4d_out.nii.gz";
+  // PropaTools::WriteImage<TLabelImage4D>(outSeg4D, fnSegOut4D);
+
 
   // ibuilder->SetImage4D();
   // ibuilder->SetReferenceSegmentationIn3D(PropaTools::ReadImag)
