@@ -8,14 +8,30 @@
 #include <vtkNew.h>
 #include <vtkSmartPointer.h>
 #include <vtkImageData.h>
+#include <vtkDecimatePro.h>
+#include <vtkXMLImageDataWriter.h>
+#include <vtkXMLPolyDataWriter.h>
+#include <itkImageToVTKImageFilter.h>
 
 #include <PropagationAPI.h>
 #include <PropagationIO.h>
 #include <PropagationTools.h>
 #include <PropagationParameters.h>
 #include <GreedyParameters.h>
+#include <PropagationCommon.h>
+#include <GreedyAPI.h>
 
 using namespace propagation;
+
+typedef double TReal;
+PROPAGATION_DATA_TYPEDEFS
+typedef PropagationAPI<TReal> PropagationAPIType;
+typedef PropagationInput<TReal> PropagationInputType;
+typedef std::shared_ptr<PropagationInputType> PropaInputPointer;
+typedef PropagationOutput<TReal> PropagationOutputType;
+typedef std::shared_ptr<PropagationOutputType> PropaOutputPointer;
+typedef PropagationInputBuilder<TReal> PropaInputBuilderType;
+typedef PropagationTools<TReal> PropaTools;
 
 char* getCmdOption(char ** begin, char ** end, const std::string & option)
 {
@@ -80,26 +96,21 @@ struct SegConfig
 
 struct TPData
 {
-  typedef double TReal;
-  typedef PropagationAPI<TReal> PropagationAPIType;
-  typedef PropagationInput<TReal> PropagationInputType;
-  typedef std::shared_ptr<PropagationInputType> PropaInputPointer;
-  typedef PropagationOutput<TReal> PropagationOutputType;
-  typedef std::shared_ptr<PropagationOutputType> PropaOutputPointer;
-  typedef PropagationInputBuilder<TReal> PropaInputBuilderType;
-  typedef PropagationTools<TReal> PropaTools;
-  typedef typename PropagationAPIType::TImage4D TImage4D;
-  typedef typename PropagationAPIType::TImage3D TImage3D;
-  typedef typename PropagationAPIType::TLabelImage3D TLabelImage3D;
-  typedef typename PropagationAPIType::TLabelImage4D TLabelImage4D;
-  typedef typename PropagationAPIType::TPropagationMesh TPropaMesh;
-  typedef typename PropagationAPIType::TPropagationMeshPointer TPPropaMeshPointer;
-
-
   TImage3D::Pointer img;
   TLabelImage3D::Pointer seg;
-  TPPropaMeshPointer mesh;
+  TPropagationMeshPointer mesh;
+  TPropagationMeshPointer mesh_dc;
 };
+
+TPropagationMeshPointer ProcessMesh(TPropagationMeshPointer meshIn)
+{
+  vtkNew<vtkDecimatePro> flt_decimate;
+  flt_decimate->SetInputData(meshIn);
+  flt_decimate->SetTargetReduction(70);
+  flt_decimate->PreserveTopologyOn();
+  flt_decimate->Update();
+  return flt_decimate->GetOutput();
+}
 
 int main (int argc, char *argv[])
 {
@@ -142,17 +153,7 @@ int main (int argc, char *argv[])
 
   // Running propagation
   typedef double TReal;
-  typedef PropagationAPI<TReal> PropagationAPIType;
-  typedef PropagationInput<TReal> PropagationInputType;
-  typedef std::shared_ptr<PropagationInputType> PropaInputPointer;
-  typedef PropagationOutput<TReal> PropagationOutputType;
-  typedef std::shared_ptr<PropagationOutputType> PropaOutputPointer;
-  typedef PropagationInputBuilder<TReal> PropaInputBuilderType;
-  typedef PropagationTools<TReal> PropaTools;
-  typedef typename PropagationAPIType::TImage4D TImage4D;
-  typedef typename PropagationAPIType::TImage3D TImage3D;
-  typedef typename PropagationAPIType::TLabelImage3D TLabelImage3D;
-  typedef typename PropagationAPIType::TLabelImage4D TLabelImage4D;
+
 
   for (auto sc : segConfigs)
   {
@@ -176,6 +177,15 @@ int main (int argc, char *argv[])
     // -- read in 3d reference segmentation
     TLabelImage3D::Pointer seg3d = PropaTools::ReadImage<TLabelImage3D>(sc.fnSeg);
 
+    // -- generate a segmentation mesh
+    TPropagationMeshPointer mesh = PropaTools::GetMeshFromLabelImage(seg3d);
+    TPropagationMeshPointer mesh_dc = ProcessMesh(mesh);
+
+    std::cout << "Original: " << mesh->GetNumberOfPolys() << std::endl;
+    std::cout << "Decimated: " << mesh_dc->GetNumberOfPolys() << std::endl;
+
+    std::string meshTag = "dc70";
+
     tpData[sc.tpr].seg = seg3d; // put reference segmentation in
 
     ibuilder->SetImage4D(img4d);
@@ -184,8 +194,9 @@ int main (int argc, char *argv[])
     ibuilder->SetTargetTimePoints(sc.tpt);
     ibuilder->SetResliceMetricToLabel(0.2, false); // LABEL 0.2 vox
     ibuilder->SetRegistrationMetric(GreedyParameters::SSD);
-    ibuilder->SetMultiResolutionSchedule(std::vector<int>{ 10, 10 }); // 100x100
+    ibuilder->SetMultiResolutionSchedule(std::vector<int>{ 50, 50 }); // 100x100
     ibuilder->SetAffineDOF(GreedyParameters::AffineDOF::DOF_RIGID);
+    ibuilder->AddExtraMeshToWarp(mesh_dc, meshTag);
     ibuilder->SetPropagationVerbosity(PropagationParameters::Verbosity::VERB_VERBOSE);
     PropaInputPointer propaInput = ibuilder->BuildPropagationInput();
 
@@ -193,12 +204,31 @@ int main (int argc, char *argv[])
     propaAPI->Run();
 
     PropaOutputPointer propaOut = propaAPI->GetOutput();
+    auto outMeshes = propaOut->GetMeshSeries();
+    auto outSegs = propaOut->GetSegmentation3DSeries();
+    auto outExtraMesh = propaOut->GetExtraMeshSeries(meshTag);
 
-    for (auto tp : sc.tpt)
+    std::vector<unsigned int> alltp {sc.tpt};
+    alltp.push_back(sc.tpr);
+
+    for (auto tp : alltp)
     {
-      TLabelImage3D::Pointer outSeg3D = propaOut->GetSegmentation3D(tp);
       TPData tpd;
-      tpd.seg = outSeg3D;
+      auto drs = rs * 0.01; // decimal resample rate
+
+      // process grey image
+      auto img3d = PropaTools::template 
+        ExtractTimePointImage<TImage3D, TImage4D>(img4d, tp);
+      tpd.img = PropaTools::template
+        Resample3DImage<TImage3D>(img3d, drs, ResampleInterpolationMode::Linear);
+
+      // process seg image
+      auto seg3d = outSegs[tp];
+      tpd.seg = PropaTools::template
+        Resample3DImage<TLabelImage3D>(seg3d, drs, ResampleInterpolationMode::NearestNeighbor);
+
+      tpd.mesh = outMeshes[tp];
+      tpd.mesh_dc = outExtraMesh[tp];
       tpData[tp] = tpd;
     }
   }
@@ -206,17 +236,56 @@ int main (int argc, char *argv[])
   std::cout << "[CaseGen] Final Result: " << std::endl;
   for (auto kv : tpData)
   {
-    std::cout << " -- key = " << kv.first << std::endl;
+    auto tp = kv.first;
+    auto data = kv.second;
+
+    std::cout << " -- tp = " << tp 
+              << " img: " << data.img.GetPointer()
+              << " seg: " << data.seg.GetPointer()
+              << " mesh: " << data.mesh
+              << " mesh_dc: " << data.mesh_dc
+              << std::endl;
+    
+    // write out 3D Grey Image Series
+    std::ostringstream oss_img;
+    oss_img << dirOutput << PropaTools::GetPathSeparator();
+    oss_img << "img3d_rs%03d_%02d.vti";
+    std::string fnout_img3d = ssprintf(oss_img.str().c_str(), rs, tp);
+
+    using ConvertToVTKImage = itk::ImageToVTKImageFilter<TImage3D>;
+    auto vtkFilter = ConvertToVTKImage::New(); // convert itk image to vtk image
+    vtkFilter->SetInput(data.img);
+    vtkFilter->Update(); 
+    vtkNew<vtkXMLImageDataWriter> vtkWriter; // write to vti format
+    vtkWriter->SetInputData(vtkFilter->GetOutput());
+    vtkWriter->SetFileName(fnout_img3d.c_str());
+    vtkWriter->Write();
+    
+    // write out 3D Segmentation Image Series
+    std::ostringstream oss_seg;
+    oss_seg << dirOutput << PropaTools::GetPathSeparator();
+    oss_seg << "seg3d_rs%03d_%02d.vti";
+    std::string fnout_seg3d = ssprintf(oss_seg.str().c_str(), rs, tp);
+
+    using ConvertToVTKSeg = itk::ImageToVTKImageFilter<TLabelImage3D>;
+    auto vtkFilterSeg = ConvertToVTKSeg::New();
+    vtkFilterSeg->SetInput(data.seg);
+    vtkFilterSeg->Update();
+    vtkWriter->SetInputData(vtkFilterSeg->GetOutput());
+    vtkWriter->SetFileName(fnout_seg3d.c_str());
+    vtkWriter->Write();
+
+    // write out 3D Mesh Series
+    std::ostringstream oss_mesh;
+    oss_mesh << dirOutput << PropaTools::GetPathSeparator();
+    oss_mesh << "mesh_dc%03d_%02d.vtp";
+    std::string fnout_mesh = ssprintf(oss_mesh.str().c_str(), dc, tp);
+
+    vtkNew<vtkXMLPolyDataWriter> vtpWriter;
+    vtpWriter->SetInputData(data.mesh_dc);
+    vtpWriter->SetFileName(fnout_mesh.c_str());
+    vtpWriter->Write();
   }
-  
-
-  // const std::string fnSegOut4D = "/Users/jileihao/data/avrspt/tav48/case_output/seg4d_out.nii.gz";
-  // PropaTools::WriteImage<TLabelImage4D>(outSeg4D, fnSegOut4D);
-
-
-  // ibuilder->SetImage4D();
-  // ibuilder->SetReferenceSegmentationIn3D(PropaTools::ReadImag)
-  
 
 
   
