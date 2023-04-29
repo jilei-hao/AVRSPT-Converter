@@ -4,14 +4,17 @@
 #include <memory>
 #include <map>
 
-#include <vtkNIFTIImageReader.h>
 #include <vtkNew.h>
+#include <vtkPolyData.h>
 #include <vtkSmartPointer.h>
 #include <vtkImageData.h>
 #include <vtkDecimatePro.h>
 #include <vtkXMLImageDataWriter.h>
 #include <vtkXMLPolyDataWriter.h>
+#include <vtkDiscreteFlyingEdges3D.h>
 #include <itkImageToVTKImageFilter.h>
+#include <itkImageFileWriter.h>
+#include <itkTileImageFilter.h>
 
 #include <PropagationAPI.h>
 #include <PropagationIO.h>
@@ -112,6 +115,133 @@ TPropagationMeshPointer ProcessMesh(TPropagationMeshPointer meshIn)
   return flt_decimate->GetOutput();
 }
 
+template <class TImage4D, class TImage3D>
+typename TImage4D::Pointer
+Create4DImageFromSeries(std::vector<typename TImage3D::Pointer> seriesIn)
+{
+  TImage4D *ret = nullptr;
+
+  auto fltTile = itk::TileImageFilter<TImage3D, TImage4D>::New();
+
+  std::cout << "[Create4DImageFromSeries] " << std::endl;
+  for (auto cit = seriesIn.cbegin(); cit != seriesIn.cend(); ++cit)
+  {
+    auto idx = cit - seriesIn.cbegin();
+    std::cout << "-- adding image: " << idx << std::endl;
+    itk::FixedArray<unsigned int, 4u> layout;
+    layout[0] = 1;
+    layout[1] = 1;
+    layout[2] = 1;
+    layout[3] = 0;
+    fltTile->SetLayout(layout);
+    fltTile->SetInput(idx, *cit);
+  }
+
+  fltTile->SetDefaultPixelValue(0);
+  fltTile->Update();
+
+  return fltTile->GetOutput();
+}
+
+vnl_matrix_fixed<double, 4, 4>
+ConstructNiftiSform(vnl_matrix<double> m_dir, vnl_vector<double> v_origin, 
+	vnl_vector<double> v_spacing)
+{
+  // Set the NIFTI/RAS transform
+  vnl_matrix<double> m_ras_matrix;
+  vnl_diag_matrix<double> m_scale, m_lps_to_ras;
+  vnl_vector<double> v_ras_offset;
+
+  // Compute the matrix
+  m_scale.set(v_spacing);
+  m_lps_to_ras.set(vnl_vector<double>(3, 1.0));
+  m_lps_to_ras[0] = -1;
+  m_lps_to_ras[1] = -1;
+  m_ras_matrix = m_lps_to_ras * m_dir * m_scale;
+
+  // Compute the vector
+  v_ras_offset = m_lps_to_ras * v_origin;
+
+  // Create the larger matrix
+  vnl_vector<double> vcol(4, 1.0);
+  vcol.update(v_ras_offset);
+
+  vnl_matrix_fixed<double,4,4> m_sform;
+  m_sform.set_identity();
+  m_sform.update(m_ras_matrix);
+  m_sform.set_column(3, vcol);
+  return m_sform;
+}
+
+vnl_matrix_fixed<double, 4, 4>
+ConstructVTKtoNiftiTransform(vnl_matrix<double> m_dir, vnl_vector<double> v_origin, 
+	vnl_vector<double> v_spacing)
+{
+  vnl_matrix_fixed<double,4,4> vox2nii = ConstructNiftiSform(m_dir, v_origin, v_spacing);
+  vnl_matrix_fixed<double,4,4> vtk2vox;
+  vtk2vox.set_identity();
+  for(size_t i = 0; i < 3; i++)
+    {
+    vtk2vox(i,i) = 1.0 / v_spacing[i];
+    vtk2vox(i,3) = - v_origin[i] / v_spacing[i];
+    }
+  return vox2nii * vtk2vox;
+}
+
+TPropagationMeshPointer
+GetMeshFromLabelImage(typename TLabelImage3D::Pointer img)
+{
+  using ConvertToVTKSeg = itk::ImageToVTKImageFilter<TLabelImage3D>;
+  using TVTKImagePointer = vtkSmartPointer<vtkImageData>;
+  auto fltITKToVTK = ConvertToVTKSeg::New();
+  fltITKToVTK->SetInput(img);
+  fltITKToVTK->Update();
+  TVTKImagePointer vtkimg = fltITKToVTK->GetOutput();
+  
+	auto range = vtkimg->GetPointData()->GetArray(0)->GetRange();
+  size_t lo = 1u; // take the first label above cut
+  size_t hi = floor(range[1]); // take the last integral label below imax
+  size_t n = hi - lo + 1; // number of labels in the result
+  std::cout << "-- Preserving " << n << " labels from " << lo << " to " << hi << std::endl;
+
+  vtkNew<vtkDiscreteFlyingEdges3D> fltDFE;
+  fltDFE->SetInputData(vtkimg);
+  fltDFE->GenerateValues(n, lo, hi);
+  fltDFE->Update();
+  TPropagationMeshPointer poly_tail = fltDFE->GetOutput();
+
+  auto scalars = poly_tail->GetPointData()->GetScalars();
+  auto normals = poly_tail->GetPointData()->GetNormals();
+
+  // set NaN element to 0 to prevent reader errors
+  for(int i = 0; i < normals->GetNumberOfTuples(); i++)
+    for(int j = 0; j < normals->GetNumberOfComponents(); j++)
+    {
+      if (isnan(normals->GetComponent(i, j)))
+        normals->SetComponent(i, j, 0);
+    }
+
+  scalars->SetName("Label");
+
+  auto vtk2nii = ConstructVTKtoNiftiTransform(
+    img->GetDirection().GetVnlMatrix().as_ref(), 
+    img->GetOrigin().GetVnlVector(),
+    img->GetSpacing().GetVnlVector()
+  );
+
+  vtkNew<vtkTransform> transform;
+  transform->SetMatrix(vtk2nii.data_block());
+  transform->Update();
+  
+  vtkNew<vtkTransformPolyDataFilter> fltTransform;
+  fltTransform->SetTransform(transform);
+  fltTransform->SetInputData(poly_tail);
+  fltTransform->Update();
+  poly_tail = fltTransform->GetOutput();
+
+	return poly_tail;
+}
+
 int main (int argc, char *argv[])
 {
   std::cout << "======================================\n";
@@ -149,11 +279,12 @@ int main (int argc, char *argv[])
   segConfigs.push_back(scSys);
   segConfigs.push_back(scDias);
 
-  unsigned int dc = 50, rs = 40;
+  unsigned int dc = 0, rs = 100;
 
   // Running propagation
   typedef double TReal;
-
+  using ConvertToVTKImage = itk::ImageToVTKImageFilter<TImage3D>;
+  using ConvertToVTKSeg = itk::ImageToVTKImageFilter<TLabelImage3D>;
 
   for (auto sc : segConfigs)
   {
@@ -178,13 +309,25 @@ int main (int argc, char *argv[])
     TLabelImage3D::Pointer seg3d = PropaTools::ReadImage<TLabelImage3D>(sc.fnSeg);
 
     // -- generate a segmentation mesh
-    TPropagationMeshPointer mesh = PropaTools::GetMeshFromLabelImage(seg3d);
+    TPropagationMeshPointer mesh = GetMeshFromLabelImage(seg3d);
+    const char *debugMeshOut = "/Users/jileihao/data/avrspt/tav48/sandbox/segMesh_02.vtp";
+    vtkNew<vtkXMLPolyDataWriter> debugWriter;
+    debugWriter->SetInputData(mesh);
+    debugWriter->SetFileName(debugMeshOut);
+    debugWriter->Write();
+
+
     TPropagationMeshPointer mesh_dc = ProcessMesh(mesh);
+
+    const char *debugMeshdcOut = "/Users/jileihao/data/avrspt/tav48/sandbox/segMesh_dc_02.vtp";
+    debugWriter->SetInputData(mesh_dc);
+    debugWriter->SetFileName(debugMeshdcOut);
+    debugWriter->Write();
 
     std::cout << "Original: " << mesh->GetNumberOfPolys() << std::endl;
     std::cout << "Decimated: " << mesh_dc->GetNumberOfPolys() << std::endl;
 
-    std::string meshTag = "dc70";
+    std::string meshTag = "dc";
 
     tpData[sc.tpr].seg = seg3d; // put reference segmentation in
 
@@ -234,6 +377,7 @@ int main (int argc, char *argv[])
   }
 
   std::cout << "[CaseGen] Final Result: " << std::endl;
+
   for (auto kv : tpData)
   {
     auto tp = kv.first;
@@ -252,7 +396,7 @@ int main (int argc, char *argv[])
     oss_img << "img3d_rs%03d_%02d.vti";
     std::string fnout_img3d = ssprintf(oss_img.str().c_str(), rs, tp);
 
-    using ConvertToVTKImage = itk::ImageToVTKImageFilter<TImage3D>;
+    
     auto vtkFilter = ConvertToVTKImage::New(); // convert itk image to vtk image
     vtkFilter->SetInput(data.img);
     vtkFilter->Update(); 
@@ -267,7 +411,7 @@ int main (int argc, char *argv[])
     oss_seg << "seg3d_rs%03d_%02d.vti";
     std::string fnout_seg3d = ssprintf(oss_seg.str().c_str(), rs, tp);
 
-    using ConvertToVTKSeg = itk::ImageToVTKImageFilter<TLabelImage3D>;
+    
     auto vtkFilterSeg = ConvertToVTKSeg::New();
     vtkFilterSeg->SetInput(data.seg);
     vtkFilterSeg->Update();
@@ -278,19 +422,51 @@ int main (int argc, char *argv[])
     // write out 3D Mesh Series
     std::ostringstream oss_mesh;
     oss_mesh << dirOutput << PropaTools::GetPathSeparator();
-    oss_mesh << "mesh_dc%03d_%02d.vtp";
+    oss_mesh << "mesh_dc%02d_%02d.vtp";
     std::string fnout_mesh = ssprintf(oss_mesh.str().c_str(), dc, tp);
 
     vtkNew<vtkXMLPolyDataWriter> vtpWriter;
     vtpWriter->SetInputData(data.mesh_dc);
     vtpWriter->SetFileName(fnout_mesh.c_str());
     vtpWriter->Write();
+    
   }
 
+  // Debugging code
+  // std::vector<TImage3D::Pointer> image3DSeries;
+  // std::vector<TLabelImage3D::Pointer> seg3DSeries;
 
-  
-  
+  // for (auto kv : tpData)
+  // {
+  //   auto tp = kv.first;
+  //   auto data = kv.second;
+  //   image3DSeries.push_back(data.img);
+  //   seg3DSeries.push_back(data.seg);
+  // }
 
+  // TImage4D::Pointer imgTiled = 
+  //   Create4DImageFromSeries<TImage4D, TImage3D>(image3DSeries);
+
+  // TLabelImage4D::Pointer segTiled = 
+  //   Create4DImageFromSeries<TLabelImage4D, TLabelImage3D>(seg3DSeries);
+
+  // // write out 4d segmentation for troubleshooting
+  // std::ostringstream oss_seg4d;
+  // oss_seg4d << dirOutput << PropaTools::GetPathSeparator();
+  // oss_seg4d << "seg4d.nii.gz";
+  // auto itkSegWriter = itk::ImageFileWriter<TLabelImage4D>::New();
+  // itkSegWriter->SetInput(segTiled);
+  // itkSegWriter->SetFileName(oss_seg4d.str().c_str());
+  // itkSegWriter->Write();
+
+  // // write out 4d image for troubleshooting
+  // std::ostringstream oss_img4d;
+  // oss_img4d << dirOutput << PropaTools::GetPathSeparator();
+  // oss_img4d << "img4d.nii.gz";
+  // auto itkImageWriter = itk::ImageFileWriter<TImage4D>::New();
+  // itkImageWriter->SetInput(imgTiled);
+  // itkImageWriter->SetFileName(oss_img4d.str().c_str());
+  // itkImageWriter->Write();
 
   return EXIT_SUCCESS;
 }

@@ -15,9 +15,19 @@ set(GREEDY_INCLUDE_DIRS
   ${avrspt-converter_SOURCE_DIR}/greedy/src/ITKFilters/include
   ${avrspt-converter_SOURCE_DIR}/greedy/src/propagation
 )
+
 add_executable(CaseGen case_generator.cxx)
-target_link_libraries(CaseGen PUBLIC ${VTK_LIBRARIES} ${ITK_LIBRARIES} propagationapi greedyapi)
+target_link_libraries(CaseGen PUBLIC 
+  ${VTK_LIBRARIES} 
+  ${ITK_LIBRARIES} 
+  propagationapi 
+  greedyapi
+)
 target_include_directories(CaseGen PUBLIC ${GREEDY_INCLUDE_DIRS})
 
 add_executable(VolumeGenerator volume_generator.cxx)
 target_link_libraries(VolumeGenerator PUBLIC ${VTK_LIBRARIES} ${ITK_LIBRARIES})
+
+
+add_executable(SmoothMesh smooth_mesh.cxx)
+target_link_libraries(SmoothMesh PUBLIC ${VTK_LIBRARIES} ${ITK_LIBRARIES})

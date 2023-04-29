@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.12 FATAL_ERROR)
 
 project(avrspt-converter)
 
+# C++11 required
+set (CMAKE_CXX_STANDARD 11)
+
 find_package(VTK COMPONENTS
   CommonCore
   ImagingGeneral
@@ -31,6 +34,8 @@ endif()
 
 
 add_subdirectory(greedy)
+
+add_subdirectory(components)
 
 add_subdirectory(converters)
 
