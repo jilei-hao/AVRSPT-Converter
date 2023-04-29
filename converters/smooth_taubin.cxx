@@ -7,12 +7,18 @@
 
 int main (int argc, char *argv[])
 {
+  if (argc != 6)
+  {
+    std::cerr << "Usage: TaubinSmooth input.vtk iteration passband "
+                 "feature_angle out.vtk" << std::endl;
+    return EXIT_FAILURE;
+  }
 
   std::string fnIn = argv[1];
   int iter = std::stoi(argv[2]);
   double passband = std::stod(argv[3]);
   double featureAngle = std::stod(argv[4]);
-  std::string fnOut = argv[4];
+  std::string fnOut = argv[5];
 
   vtkNew<vtkPolyDataReader> reader;
 
