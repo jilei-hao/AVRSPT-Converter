@@ -29,11 +29,14 @@ int main (int argc, char *argv[])
   fltTaubin->SetInputData(reader->GetOutput());
   fltTaubin->SetNumberOfIterations(iter);
   fltTaubin->SetPassBand(passband);
-  fltTaubin->SetFeatureEdgeSmoothing(true);
-  fltTaubin->SetFeatureAngle(featureAngle);
+
+  if (featureAngle > 0)
+  {
+    fltTaubin->SetFeatureEdgeSmoothing(true);
+    fltTaubin->SetFeatureAngle(featureAngle);
+  }
 
   fltTaubin->Update();
-
 
   vtkNew<vtkPolyDataWriter> writer;
   writer->SetInputData(fltTaubin->GetOutput());

@@ -32,10 +32,24 @@ if (NOT ITK_FOUND)
   message(FATAL_ERROR "Unable to find the ITK build folder.")
 endif()
 
+set(LIB_INTERNAL_DIRS 
+  ${avrspt-converter_SOURCE_DIR}/common
+)
+
+set(LIB_EXTERNAL 
+  ${ITK_LIBRARIES} 
+  ${VTK_LIBRARIES}
+)
 
 add_subdirectory(greedy)
 
+add_subdirectory(common)
+
+set(LIB_INTERNAL 
+  CommonTools
+)
+
 add_subdirectory(components)
 
-add_subdirectory(converters)
+add_subdirectory(converters bin)
 

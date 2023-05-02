@@ -5,6 +5,8 @@
 #include <vtkPolyDataReader.h>
 #include <vtkPolyDataWriter.h>
 
+#include "common_tools.h"
+
 int main (int argc, char *argv[])
 {
   if (argc != 6)
@@ -29,8 +31,12 @@ int main (int argc, char *argv[])
   fltLaplacian->SetInputData(reader->GetOutput());
   fltLaplacian->SetNumberOfIterations(iter);
   fltLaplacian->SetRelaxationFactor(relaxation);
-  fltLaplacian->SetFeatureEdgeSmoothing(true);
-  fltLaplacian->SetFeatureAngle(featureAngle);
+  if (featureAngle > 0)
+  {
+    fltLaplacian->SetFeatureEdgeSmoothing(true);
+    fltLaplacian->SetFeatureAngle(featureAngle);
+  }
+
 
   fltLaplacian->Update();
 
