@@ -2,6 +2,7 @@
 #include <vtkNew.h>
 #include <vtkSmartPointer.h>
 #include <vtkSmoothPolyDataFilter.h>
+#include <vtkTriangleFilter.h>
 #include <vtkPolyDataReader.h>
 #include <vtkPolyDataWriter.h>
 
@@ -23,12 +24,19 @@ int main (int argc, char *argv[])
   std::string fnOut = argv[5];
 
   vtkNew<vtkPolyDataReader> reader;
-
   reader->SetFileName(fnIn.c_str());
   reader->Update();
 
+  vtkSmartPointer<vtkPolyData> polyTail;
+  polyTail = reader->GetOutput();
+
+  vtkNew<vtkTriangleFilter> fltTriangle;
+  fltTriangle->SetInputData(polyTail);
+  fltTriangle->Update();
+  polyTail = fltTriangle->GetOutput();
+
   vtkNew<vtkSmoothPolyDataFilter> fltLaplacian;
-  fltLaplacian->SetInputData(reader->GetOutput());
+  fltLaplacian->SetInputData(polyTail);
   fltLaplacian->SetNumberOfIterations(iter);
   fltLaplacian->SetRelaxationFactor(relaxation);
   if (featureAngle > 0)

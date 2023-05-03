@@ -4,6 +4,7 @@
 #include <vtkWindowedSincPolyDataFilter.h>
 #include <vtkPolyDataReader.h>
 #include <vtkPolyDataWriter.h>
+#include <vtkTriangleFilter.h>
 
 int main (int argc, char *argv[])
 {
@@ -25,8 +26,16 @@ int main (int argc, char *argv[])
   reader->SetFileName(fnIn.c_str());
   reader->Update();
 
+  vtkSmartPointer<vtkPolyData> polyTail;
+  polyTail = reader->GetOutput();
+
+  vtkNew<vtkTriangleFilter> fltTriangle;
+  fltTriangle->SetInputData(polyTail);
+  fltTriangle->Update();
+  polyTail = fltTriangle->GetOutput();
+
   vtkNew<vtkWindowedSincPolyDataFilter> fltTaubin;
-  fltTaubin->SetInputData(reader->GetOutput());
+  fltTaubin->SetInputData(polyTail);
   fltTaubin->SetNumberOfIterations(iter);
   fltTaubin->SetPassBand(passband);
 
