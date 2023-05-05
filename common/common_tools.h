@@ -1,3 +1,6 @@
+#ifndef __common_tools_h_
+#define __common_tools_h_
+
 #include <iostream>
 
 class CommonTools
@@ -36,3 +39,5 @@ public:
       return std::string();
   }
 };
+
+#endif

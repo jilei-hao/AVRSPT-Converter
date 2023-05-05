@@ -41,8 +41,11 @@ set(LIB_EXTERNAL
   ${VTK_LIBRARIES}
 )
 
+# configure greedy
+set(BUILD_CLI OFF)
 add_subdirectory(greedy)
 
+# internal libraries
 add_subdirectory(common)
 
 set(LIB_INTERNAL 
