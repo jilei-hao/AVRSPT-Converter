@@ -1,5 +1,11 @@
 #include "mesh_helpers.h"
 
+#include <itkImage.h>
+#include <vtkPolyData.h>
+#include <vtkPoints.h>
+#include <vtkUnsignedShortArray.h>
+#include <vnl/vnl_inverse.h>
+
 MeshHelpers
 ::MeshHelpers()
 {
@@ -82,4 +88,76 @@ getVTKToNiftiTransform(itk::ImageBase<3>::Pointer img3d)
   transform->Update();
 
   return transform;
+}
+
+
+void 
+MeshHelpers
+::mapLabelVoxelToPointData(vtkSmartPointer<vtkPolyData> mesh, 
+  itk::Image<uint16_t, 3>::Pointer img3d)
+{
+  auto points = mesh->GetPoints();
+
+  typedef itk::Image<uint16_t, 3> LabelImage3DType;
+
+  std::cout << "Mesh Print: " << std::endl;
+  mesh->Print(std::cout);
+  std::cout << std::endl;
+
+  std::cout << "Image Print: " << std::endl;
+  img3d->Print(std::cout);
+  std::cout << std::endl;
+
+  auto vox2nii = ConstructNiftiSform(
+    img3d->GetDirection().GetVnlMatrix().as_ref(),
+    img3d->GetOrigin().GetVnlVector(),
+    img3d->GetSpacing().GetVnlVector()
+  );
+
+  std::cout << "vox2nii: \n" << vox2nii << std::endl;
+
+  auto nii2vox = vnl_inverse(vox2nii);
+
+  std::cout << "nii2vox: \n" << nii2vox << std::endl;
+
+  for (vtkIdType i = 0; i < 10; ++i)
+  {
+    double meshPos[3];
+    points->GetPoint(i, meshPos);
+
+    LabelImage3DType::IndexType imgIndex;
+    LabelImage3DType::PointType imgPos;
+
+    vnl_vector_fixed<double, 4> meshPosVector(1.0);
+
+    for (int dim = 0; dim < 3; ++dim)
+    {
+      meshPosVector[dim] = meshPos[dim];
+    }
+
+    meshPosVector = meshPosVector * nii2vox;
+
+    for (int dim = 0; dim < 3; ++dim)
+    {
+      imgPos[i] = meshPosVector[i];
+    }
+    
+    img3d->TransformPhysicalPointToIndex(imgPos, imgIndex);
+    uint16_t pv = img3d->GetPixel(imgIndex);
+
+    std::cout << "MeshPos: [" << meshPos[0] << "," << meshPos[1] << "," << meshPos[2] << "]" 
+              << "; ImageInd: [" << imgIndex[0] << "," << imgIndex[1] << "," << imgIndex[2] << "]"
+              << "; PixelValue: " << pv
+              << std::endl;
+  }
+
+}
+
+
+void 
+MeshHelpers
+::getVoxelIJKfromMesh(double *meshPos, double *voxPos,
+  vnl_vector<double> voxOrigin, vnl_vector<double> voxSpacing)
+{
+
 }

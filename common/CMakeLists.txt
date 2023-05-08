@@ -6,3 +6,6 @@ set(CommonTools_Src
 
 add_library(CommonTools ${CommonTools_Src})
 target_link_libraries(CommonTools PUBLIC ${LIB_EXTERNAL})
+
+add_executable(TestCommon test_common.cxx)
+target_link_libraries(TestCommon PRIVATE CommonTools ${LIB_EXTERNAL})
