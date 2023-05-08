@@ -42,7 +42,7 @@ int main (int argc, char *argv[])
   fltQDecimate->SetInputData(polyTail);
   fltQDecimate->SetTargetReduction(reduction);
   fltQDecimate->SetVolumePreservation(true);
-  fltQDecimate->SetMapPointData(true);
+  fltQDecimate->SetMapPointData(false);
   fltQDecimate->Update();
   polyTail = fltQDecimate->GetOutput();
 
