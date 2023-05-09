@@ -2,6 +2,7 @@ set(CommonTools_Src
   common_tools.cxx
   image_helpers.cxx
   mesh_helpers.cxx
+  itkOrientedRASImage.cxx
 )
 
 add_library(CommonTools ${CommonTools_Src})

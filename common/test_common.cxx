@@ -2,6 +2,7 @@
 #include <string>
 
 #include <itkImageFileReader.h>
+
 #include <vtkPolyDataReader.h>
 #include <vtkPolyData.h>
 #include <vtkSmartPointer.h>
@@ -16,13 +17,16 @@
 #include <vtkTriangleFilter.h>
 #include <vtkUnsignedIntArray.h>
 #include <vtkPointData.h>
+#include <vtkTransform.h>
+#include <vtkTransformPolyDataFilter.h>
 
 
 #include "mesh_helpers.h"
+#include "itkOrientedRASImage.h"
 
 typedef vtkSmartPointer<vtkPolyData> MeshPointer;
 typedef uint16_t LabelType;
-typedef itk::Image<LabelType, 3U> LabelImage3DType;
+typedef itk::OrientedRASImage<LabelType, 3U> LabelImage3DType;
 typedef vtkSmartPointer<vtkImageData> VTKImagePointer;
 
 bool indexInExtent(VTKImagePointer img, int index[3])
@@ -94,6 +98,9 @@ int main (int argc, char *argv[])
   std::cout << "Image Print: " << std::endl;
   img->Print(std::cout);
 
+  auto imgRAS = itk::ReadImage<LabelImage3DType>(fnImg);
+  auto vtk2nii = MeshHelpers::getVTKToNiftiTransform(imgRAS);
+
   vtkNew<vtkImageThreshold> fltThreshold;
   fltThreshold->SetInputData(img);
   fltThreshold->ThresholdBetween(1, VTK_DOUBLE_MAX);
@@ -159,7 +166,7 @@ int main (int argc, char *argv[])
     double pv = img->GetScalarComponentAsDouble(imgIJK[0], imgIJK[1], imgIJK[2], 0);
 
     if (pv == 0)
-      pv = findNearestNonBackgroundVoxelValue(img, imgIJK, 1);
+      pv = findNearestNonBackgroundVoxelValue(img, imgIJK, 2);
 
     // std::cout << "mesh coord: [" << p[0] << "," << p[1] << "," << p[2] << "]"
     //           << " img coord: [" << imgIJK[0] << "," << imgIJK[1] << "," << imgIJK[2] << "]"
@@ -174,20 +181,22 @@ int main (int argc, char *argv[])
   }
 
   labelArr->SetName("Label");
-
   mesh->GetPointData()->SetScalars(labelArr);
-
   std::cout << "zeroCnt: " << zeroCnt << std::endl;
 
-  // std::cout << "Arr: " << std::endl;
-  // labelArr->Print(std::cout);
 
-  const char *fnMeshOut = "/Users/jileihao/data/avrspt/smoothing/bseg.vtp";
+  vtkNew<vtkTransformPolyDataFilter> fltTransform;
+  fltTransform->SetInputData(mesh);
+  fltTransform->SetTransform(vtk2nii);
+  fltTransform->Update();
+  mesh = fltTransform->GetOutput();
+
+  const char *fnMeshOut = "/Users/jileihao/data/avrspt/smoothing/bseg.vtk";
   
-  vtkNew<vtkXMLPolyDataWriter> vtpWriter;
-  vtpWriter->SetInputData(mesh);
-  vtpWriter->SetFileName(fnMeshOut);
-  vtpWriter->Update();
+  vtkNew<vtkPolyDataWriter> vtkWriter;
+  vtkWriter->SetInputData(mesh);
+  vtkWriter->SetFileName(fnMeshOut);
+  vtkWriter->Update();
 
   return EXIT_SUCCESS;
 }
