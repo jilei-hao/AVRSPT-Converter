@@ -80,14 +80,14 @@ double findNearestNonBackgroundVoxelValue(VTKImagePointer img, int imgIJK[3], ui
 
 int main (int argc, char *argv[])
 {
+  if (argc < 3)
+  {
+    std::cout << "Usage: TestCommon input.nii.gz output.vtk" << std::endl;
+    return EXIT_FAILURE;
+  }
 
-  std::string fnMesh = "/Users/jileihao/data/avrspt/smoothing/seg_dc80.vtk";
-  std::string fnImg = "/Users/jileihao/data/avrspt/smoothing/seg_rs200_sm.nii.gz";
-
-  // vtkNew<vtkPolyDataReader> meshReader;
-  // meshReader->SetFileName(fnMesh.c_str());
-  // meshReader->Update();
-  // MeshPointer mesh = meshReader->GetOutput();
+  std::string fnImg = argv[1];
+  std::string fnMeshOut = argv[2];
 
   vtkNew<vtkNIFTIImageReader> imgReader;
   imgReader->SetFileName(fnImg.c_str());
@@ -190,12 +190,10 @@ int main (int argc, char *argv[])
   fltTransform->SetTransform(vtk2nii);
   fltTransform->Update();
   mesh = fltTransform->GetOutput();
-
-  const char *fnMeshOut = "/Users/jileihao/data/avrspt/smoothing/bseg.vtk";
   
   vtkNew<vtkPolyDataWriter> vtkWriter;
   vtkWriter->SetInputData(mesh);
-  vtkWriter->SetFileName(fnMeshOut);
+  vtkWriter->SetFileName(fnMeshOut.c_str());
   vtkWriter->Update();
 
   return EXIT_SUCCESS;
