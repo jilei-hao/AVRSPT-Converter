@@ -63,7 +63,7 @@ MeshHelpers
   for(size_t i = 0; i < 3; i++)
     {
     vtk2vox(i,i) = 1.0 / v_spacing[i];
-    vtk2vox(i,3) = v_origin[i] / v_spacing[i];
+    vtk2vox(i,3) = - v_origin[i] / v_spacing[i];
     }
 
   std::cout << "---- vox2nii: \n" << vox2nii << "\nvtk2vox: \n" << vtk2vox << std::endl;

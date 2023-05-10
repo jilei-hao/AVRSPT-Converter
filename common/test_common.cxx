@@ -2,6 +2,7 @@
 #include <string>
 
 #include <itkImageFileReader.h>
+#include <itkVTKImageExport.h>
 
 #include <vtkPolyDataReader.h>
 #include <vtkPolyData.h>
@@ -18,6 +19,7 @@
 #include <vtkUnsignedIntArray.h>
 #include <vtkPointData.h>
 #include <vtkTransform.h>
+#include <vtkImageImport.h>
 #include <vtkTransformPolyDataFilter.h>
 
 
@@ -78,6 +80,23 @@ double findNearestNonBackgroundVoxelValue(VTKImagePointer img, int imgIJK[3], ui
   return crntValue;
 }
 
+template<class TImage>
+void ConnectITKToVTK(itk::VTKImageExport<TImage> *fltExport,vtkImageImport *fltImport)
+{
+  fltImport->SetUpdateInformationCallback( fltExport->GetUpdateInformationCallback());
+  fltImport->SetPipelineModifiedCallback( fltExport->GetPipelineModifiedCallback());
+  fltImport->SetWholeExtentCallback( fltExport->GetWholeExtentCallback());
+  fltImport->SetSpacingCallback( fltExport->GetSpacingCallback());
+  fltImport->SetOriginCallback( fltExport->GetOriginCallback());
+  fltImport->SetScalarTypeCallback( fltExport->GetScalarTypeCallback());
+  fltImport->SetNumberOfComponentsCallback( fltExport->GetNumberOfComponentsCallback());
+  fltImport->SetPropagateUpdateExtentCallback( fltExport->GetPropagateUpdateExtentCallback());
+  fltImport->SetUpdateDataCallback( fltExport->GetUpdateDataCallback());
+  fltImport->SetDataExtentCallback( fltExport->GetDataExtentCallback());
+  fltImport->SetBufferPointerCallback( fltExport->GetBufferPointerCallback());
+  fltImport->SetCallbackUserData( fltExport->GetCallbackUserData());
+}
+
 int main (int argc, char *argv[])
 {
   if (argc < 3)
@@ -89,17 +108,31 @@ int main (int argc, char *argv[])
   std::string fnImg = argv[1];
   std::string fnMeshOut = argv[2];
 
-  vtkNew<vtkNIFTIImageReader> imgReader;
-  imgReader->SetFileName(fnImg.c_str());
-  imgReader->Update();
-  vtkNew<vtkImageData> img;
-  img->DeepCopy(imgReader->GetOutput());
+  // vtkNew<vtkNIFTIImageReader> imgReader;
+  // imgReader->SetFileName(fnImg.c_str());
+  // imgReader->Update();
+  // vtkNew<vtkImageData> img;
+  // img->DeepCopy(imgReader->GetOutput());
 
-  std::cout << "Image Print: " << std::endl;
-  img->Print(std::cout);
+  
 
   auto imgRAS = itk::ReadImage<LabelImage3DType>(fnImg);
   auto vtk2nii = MeshHelpers::getVTKToNiftiTransform(imgRAS);
+
+  std::cout << "Image Print: " << std::endl;
+  imgRAS->Print(std::cout);
+
+  typedef itk::VTKImageExport<LabelImage3DType> ExporterType;
+  ExporterType::Pointer fltExport = ExporterType::New();
+  fltExport->SetInput(imgRAS);
+  vtkNew<vtkImageImport> fltImport;
+  ConnectITKToVTK(fltExport.GetPointer(), fltImport);
+  fltImport->Update();
+  auto img = fltImport->GetOutput();
+
+  // std::cout << "VTKImage" << std::endl;
+  // img->Print(std::cout);
+
 
   vtkNew<vtkImageThreshold> fltThreshold;
   fltThreshold->SetInputData(img);
@@ -130,8 +163,8 @@ int main (int argc, char *argv[])
 
   vtkNew<vtkWindowedSincPolyDataFilter> fltTaubin;
   fltTaubin->SetInputData(mesh);
-  fltTaubin->SetNumberOfIterations(30);
-  fltTaubin->SetPassBand(0.1);
+  fltTaubin->SetNumberOfIterations(100);
+  fltTaubin->SetPassBand(0.05);
   fltTaubin->Update();
   mesh = fltTaubin->GetOutput();
 
@@ -166,7 +199,7 @@ int main (int argc, char *argv[])
     double pv = img->GetScalarComponentAsDouble(imgIJK[0], imgIJK[1], imgIJK[2], 0);
 
     if (pv == 0)
-      pv = findNearestNonBackgroundVoxelValue(img, imgIJK, 2);
+      pv = findNearestNonBackgroundVoxelValue(img, imgIJK, 4);
 
     // std::cout << "mesh coord: [" << p[0] << "," << p[1] << "," << p[2] << "]"
     //           << " img coord: [" << imgIJK[0] << "," << imgIJK[1] << "," << imgIJK[2] << "]"
