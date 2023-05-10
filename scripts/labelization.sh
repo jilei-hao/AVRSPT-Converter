@@ -2,7 +2,7 @@
 
 labelizer=/Users/jileihao/dev/avrspt-dev/AVRSPT-Converter/build/common/TestCommon
 
-fnimg4d="/Users/jileihao/data/avrspt/tav48/img4d_tav48_LAS.nii.gz"
+# fnimg4d="/Users/jileihao/data/avrspt/tav48/img4d_tav48_LAS.nii.gz"
 
 # process tp 2 -> 1 3 4 5
 # tpstr="seg02"
@@ -76,26 +76,26 @@ fnimg4d="/Users/jileihao/data/avrspt/tav48/img4d_tav48_LAS.nii.gz"
 fnimg4d="/Users/jileihao/data/avrspt/bavcta008/image/bavcta008_baseline.nii.gz"
 
 # process tp 2
-# tpstr="seg02"
-# rsrate="2"
-# rsstr="${rsrate}00"
-# folder=/Users/jileihao/data/avrspt/bavcta008/smoothing/
-# fnimg=$folder/${tpstr}.nii.gz
-# fnmesh=$folder/${tpstr}.vtk
+tpstr="seg02"
+rsrate="2"
+rsstr="${rsrate}00"
+folder=/Users/jileihao/data/avrspt/bavcta008/smoothing/
+fnimg=$folder/${tpstr}.nii.gz
+fnmesh=$folder/${tpstr}.vtk
 
-# $labelizer $fnimg $fnmesh
+$labelizer $fnimg $fnmesh
 
-# PYTHONPATH="/Users/jileihao/dev/propagation-dev/segmentation-propagation/src" \
-# python3 /Users/jileihao/dev/propagation-dev/segmentation-propagation/propagation.py \
-# $fnimg4d \
-# $fnimg \
-# "bavcta008-SYS" \
-# "2" \
-# "1;3;4;5;6;7;8;9;10;11;12;13;14" \
-# "/Users/jileihao/data/avrspt/bavcta008/propagation/bavcta008/bavcta008-SYS" \
-# "/Users/jileihao/dev/propagation-dev/segmentation-propagation/config.json" \
-# -warp_only \
-# -add_mesh "labelized_mesh" $fnmesh
+PYTHONPATH="/Users/jileihao/dev/propagation-dev/segmentation-propagation/src" \
+python3 /Users/jileihao/dev/propagation-dev/segmentation-propagation/propagation.py \
+$fnimg4d \
+$fnimg \
+"bavcta008-SYS" \
+"2" \
+"1;3;4;5;6;7;8;9;10;11;12;13;14" \
+"/Users/jileihao/data/avrspt/bavcta008/propagation/bavcta008/bavcta008-SYS" \
+"/Users/jileihao/dev/propagation-dev/segmentation-propagation/config.json" \
+-warp_only \
+-add_mesh "onemesh" $fnmesh
 
 
 # process tp 19
@@ -118,4 +118,4 @@ $fnimg \
 "/Users/jileihao/data/avrspt/bavcta008/propagation/bavcta008/bavcta008-DIAS" \
 "/Users/jileihao/dev/propagation-dev/segmentation-propagation/config.json" \
 -warp_only \
--add_mesh "labelized_mesh" $fnmesh
+-add_mesh "onemesh" $fnmesh
