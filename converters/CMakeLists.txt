@@ -1,5 +1,4 @@
-add_executable(ImageToVTI image_to_vti.cxx)
-target_link_libraries(ImageToVTI PUBLIC ${VTK_LIBRARIES})
+
 
 add_executable(ModelGen model_generator.cxx)
 target_link_libraries(ModelGen PUBLIC ${LIB_EXTERNAL} ${LIB_INTERNAL})
@@ -38,3 +37,13 @@ target_include_directories(LaplacianSmooth PUBLIC ${LIB_INTERNAL_DIRS})
 add_executable(QuadricDecimate decimate_quadric.cxx)
 target_link_libraries(QuadricDecimate PUBLIC ${LIB_EXTERNAL} ${LIB_INTERNAL})
 target_include_directories(QuadricDecimate PUBLIC ${LIB_INTERNAL_DIRS})
+
+
+add_executable(VTIProbe vti_probe.cxx)
+target_link_libraries(VTIProbe PUBLIC ${LIB_EXTERNAL})
+
+add_executable(vti2nii vti_to_nii.cxx)
+target_link_libraries(vti2nii PUBLIC ${LIB_EXTERNAL})
+
+add_executable(nii2vti nii_to_vti.cxx)
+target_link_libraries(nii2vti PUBLIC ${LIB_EXTERNAL})

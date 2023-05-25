@@ -6,8 +6,12 @@
 
 int main (int argc, char *argv[])
 {
-  std::cout << "-- Input Filename: " << argv[1] << std::endl;
-  std::cout << "-- Output Filename: " << argv[2] << std::endl;
+  if (argc < 3)
+  {
+    std::cerr << "Usage: nii2vti input.nii.gz output.vti" << std::endl;
+    return EXIT_FAILURE;
+  }
+  
   vtkNew<vtkNIFTIImageReader> reader;
   reader->SetFileName(argv[1]);
   reader->Update();

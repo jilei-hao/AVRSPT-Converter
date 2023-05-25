@@ -5,8 +5,8 @@ vtk2vtp="/Users/jileihao/dev/avrspt-dev/AVRSPT-Converter/build/bin/VTKToVTP"
 dir_input="/Users/jileihao/data/avrspt/bavcta008/propagation/bavcta008/bavcta008-SYS/mesh"
 dir_output="/Users/jileihao/data/avrspt/bavcta008/propagation/bavcta008/onemesh"
 
-ptn_original="seg_bavcta008-SYS"
-ptn_new=""
+ptn_original="seg_bavcta008-SYS_onemesh"
+ptn_new="onemesh"
 
 mkdir ${dir_output}
 mkdir ${dir_output}/vtp
@@ -33,8 +33,8 @@ vtk2vtp="/Users/jileihao/dev/avrspt-dev/AVRSPT-Converter/build/bin/VTKToVTP"
 dir_input="/Users/jileihao/data/avrspt/bavcta008/propagation/bavcta008/bavcta008-DIAS/mesh"
 dir_output="/Users/jileihao/data/avrspt/bavcta008/propagation/bavcta008/onemesh"
 
-ptn_original="seg_bavcta008-DIAS"
-ptn_new=""
+ptn_original="seg_bavcta008-DIAS_onemesh"
+ptn_new="onemesh"
 
 mkdir ${dir_output}
 mkdir ${dir_output}/vtp
