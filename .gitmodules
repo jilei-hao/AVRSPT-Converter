@@ -1,3 +1,9 @@
 [submodule "greedy"]
 	path = greedy
 	url = https://github.com/jilei-hao/greedy.git
+[submodule "vtkbool"]
+	path = vtkbool
+	url = https://github.com/zippy84/vtkbool.git
+[submodule "vespa"]
+	path = vespa
+	url = https://gitlab.kitware.com/vtk-cgal/vespa.git
